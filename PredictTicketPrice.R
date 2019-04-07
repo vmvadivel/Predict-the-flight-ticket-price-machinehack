@@ -24,22 +24,14 @@ library(xgboost)
 
 train <- read.csv("Data_Train.csv", stringsAsFactors = F)
 
-#sum(duplicated(train))
-
 row.has.na <- apply(train, 1, function(x){any(is.na(x))})
 na.omit(train)
 
 # Feature Engineering
 
-#str(train)
-#head(train)
-
 train$Date_of_Journey <- as.Date(train$Date_of_Journey,'%d/%m/%Y')
 train$Month_of_Journey <- format(as.Date(train$Date_of_Journey), "%m") 
 train$Day_of_Journey <- format(as.Date(train$Date_of_Journey), "%d") 
-
-## is it a holiday - yes or not (to be done)
-
 train$Day_of_week <- weekdays(train$Date_of_Journey)
 train$WeekDayNumber <- as.numeric(format(train$Date_of_Journey,"%w"))
 train$Weekend <- as.numeric(grepl("S.+",weekdays(train$Date_of_Journey)))
@@ -88,9 +80,6 @@ df2 <- within(train ,{
 train$arrival_time_hours <- as.numeric(df2$hours)
 train$arrival_time_mins <- as.numeric(df2$mins)
 
-#train$Month_of_Journey <- as.numeric(train$Month_of_Journey) 
-#train$Day_of_Journey <- as.numeric(train$Day_of_Journey) 
-
 str(train)
 
 #Test data
@@ -100,8 +89,6 @@ test$Price <- NA
 test$Date_of_Journey <- as.Date(test$Date_of_Journey,'%d/%m/%Y')
 test$Month_of_Journey <- format(as.Date(test$Date_of_Journey), "%m") 
 test$Day_of_Journey <- format(as.Date(test$Date_of_Journey), "%d") 
-
-#test$Date_of_Journey <- as.Date(test$Date_of_Journey)
 test$Day_of_week <- weekdays(test$Date_of_Journey)
 test$WeekDayNumber <- as.numeric(format(test$Date_of_Journey,"%w"))
 test$Weekend <- as.numeric(grepl("S.+",weekdays(test$Date_of_Journey)))
@@ -114,7 +101,6 @@ test$Time_of_departure <- ifelse(df$time2 >= 05 & df$time2 <= 11, "Morning",
             ifelse(df$time2 > 16 & df$time2 <= 19, "Evening", "Night")))
 
 test$DaysLeftUntilDeparture <- as.numeric(test$Date_of_Journey - as.Date(Sys.Date(),"%d/%m/%Y"))
-
 
 # Get numbers next to hours and minutes
 hour_minute <- sub("(\\d+)h (\\d+)m", "\\1-\\2", test$Duration)
@@ -151,11 +137,6 @@ df2 <- within(test ,{
 
 test$arrival_time_hours <- as.numeric(df2$hours)
 test$arrival_time_mins <- as.numeric(df2$mins)
-
-#test$Month_of_Journey <- as.numeric(test$Month_of_Journey) 
-#test$Day_of_Journey <- as.numeric(test$Day_of_Journey) 
-
-str(test)
 
 # Drop unwanted columns
 train <- subset(train, select = -c(Arrival_Time, Dep_Time, Duration, Date_of_Journey))
@@ -230,9 +211,6 @@ all$Day_of_week <- as.factor(all$Day_of_week)
 table(all$Day_of_week)
 sum(table(all$Day_of_week))
 
-#dim(all)
-#str(all[,c(1:15, 7)]) 
-
 numericVars <- which(sapply(all, is.numeric)) #index vector numeric variables
 factorVars <- which(sapply(all, is.factor)) #index vector factor variables
 cat('There are', length(numericVars), 'numeric variables, and', length(factorVars), 'categoric variables')
@@ -251,14 +229,6 @@ corrplot.mixed(cor_numVar, tl.col="black", tl.pos = "lt", tl.cex = 0.7,cl.cex = 
 str(all)
 
 set.seed(2018)
-
-#skip route & price
-quick_RF <- randomForest(x=all[1:10683,c(3,6)], y=all$Price[1:10683], ntree=100,importance=TRUE)
-imp_RF <- importance(quick_RF)
-imp_DF <- data.frame(Variables = row.names(imp_RF), MSE = imp_RF[,1])
-imp_DF <- imp_DF[order(imp_DF$MSE, decreasing = TRUE),]
-
-ggplot(imp_DF[1:20,], aes(x=reorder(Variables, MSE), y=MSE, fill=MSE)) + geom_bar(stat = 'identity') + labs(x = 'Variables', y= '% increase MSE if variable is randomly permuted') + coord_flip() + theme(legend.position="none")
 
 numericVarNames <- numericVarNames[!(numericVarNames %in% c('Price'))] #numericVarNames was created before having done anything
 numericVarNames <- append(numericVarNames, c('dep_time_hours', 
@@ -331,8 +301,8 @@ min_child_weight=c(1, 2, 3, 4 ,5),
 subsample=1
 )
 
-xgb_caret <- train(x=train1, y=all$Price[!is.na(all$Price)], method='xgbTree', trControl= my_control, tuneGrid=xgb_grid) 
-xgb_caret$bestTune
+#xgb_caret <- train(x=train1, y=all$Price[!is.na(all$Price)], method='xgbTree', trControl= my_control, tuneGrid=xgb_grid) 
+#xgb_caret$bestTune
 
 label_train <- all$Price[!is.na(all$Price)]
 
@@ -353,16 +323,8 @@ default_param<-list(
 
 xgbcv <- xgb.cv( params = default_param, data = dtrain, nrounds = 35000, nfold = 10, showsd = T, stratified = T, print_every_n = 40, early_stopping_rounds = 10, maximize = F)
 xgb_mod <- xgb.train(data = dtrain, params=default_param, nrounds = 679)
-
 XGBpred <- predict(xgb_mod, dtest)
-predictions_XGB <- exp(XGBpred) #need to reverse the log to the real values
-
-#install.packages('Ckmeans.1d.dp')
-library(Ckmeans.1d.dp) #required for ggplot clustering
-mat <- xgb.importance (feature_names = colnames(train1),model = xgb_mod)
-xgb.ggplot.importance(importance_matrix = mat[1:20], rel_to_first = TRUE)
-
-##predictions
+predictions_XGB <- exp(XGBpred) 
 
 sub_avg <- data.frame(Price = (predictions_XGB))
-write.csv(sub_avg, file = '5.csv', row.names = F) 
+write.csv(sub_avg, file = 'myprediction.csv', row.names = F) 
